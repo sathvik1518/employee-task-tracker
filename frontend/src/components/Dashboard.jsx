@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { getDashboard, getTasks } from "../api.js";
 
+// "2026-11-15" -> "15 Nov"
+const shortDate = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -36,14 +39,30 @@ export default function Dashboard() {
     .sort()
     .map((date) => ({ date, count: counts[date] }));
 
-  // Size of the graph and the space around it.
-  const W = 640;
-  const H = 240;
-  const PAD = 40;
-  const maxCount = Math.max(...points.map((p) => p.count), 1);
-  const x = (i) => (points.length === 1 ? W / 2 : PAD + (i * (W - 2 * PAD)) / (points.length - 1));
-  const y = (count) => H - PAD - (count / maxCount) * (H - 2 * PAD);
-  const linePoints = points.map((p, i) => `${x(i)},${y(p.count)}`).join(" ");
+  // Graph size and the space left around it for labels.
+  const W = 680, H = 280, L = 48, R = 24, T = 24, B = 44;
+  const top = Math.max(...points.map((p) => p.count), 1);
+  const step = Math.max(1, Math.ceil(top / 4)); // gap between grid lines
+  const yMax = Math.ceil(top / step) * step;
+  const ticks = [];
+  for (let v = 0; v <= yMax; v += step) ticks.push(v);
+
+  const base = H - B;
+  const x = (i) => (points.length === 1 ? (L + W - R) / 2 : L + (i * (W - L - R)) / (points.length - 1));
+  const y = (count) => base - (count / yMax) * (H - T - B);
+
+  // A smooth curve through all the points.
+  let curve = "";
+  points.forEach((p, i) => {
+    if (i === 0) {
+      curve = `M ${x(0)} ${y(p.count)}`;
+    } else {
+      const mid = (x(i - 1) + x(i)) / 2;
+      curve += ` C ${mid} ${y(points[i - 1].count)}, ${mid} ${y(p.count)}, ${x(i)} ${y(p.count)}`;
+    }
+  });
+  const area = points.length > 1 ? `${curve} L ${x(points.length - 1)} ${base} L ${x(0)} ${base} Z` : "";
+  const labelEvery = Math.ceil(points.length / 8); // avoid crowded date labels
 
   return (
     <div>
@@ -62,28 +81,43 @@ export default function Dashboard() {
           <p className="muted">No tasks yet. Create a task to see the graph.</p>
         ) : (
           <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Line graph of tasks due by date">
-            {/* the two axes */}
-            <line x1={PAD} y1={PAD / 2} x2={PAD} y2={H - PAD} stroke="#b6bdc7" />
-            <line x1={PAD} y1={H - PAD} x2={W - PAD / 2} y2={H - PAD} stroke="#b6bdc7" />
+            <defs>
+              <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#1d4ed8" stopOpacity="0.28" />
+                <stop offset="100%" stopColor="#1d4ed8" stopOpacity="0.02" />
+              </linearGradient>
+            </defs>
 
-            {/* the line */}
-            {points.length > 1 && <polyline points={linePoints} fill="none" stroke="#1d4ed8" strokeWidth="3" />}
+            {/* grid lines with the numbers on the left */}
+            {ticks.map((v) => (
+              <g key={v}>
+                <line x1={L} y1={y(v)} x2={W - R} y2={y(v)} stroke="#e5e9f0" strokeDasharray={v === 0 ? "0" : "4 4"} />
+                <text x={L - 10} y={y(v) + 4} textAnchor="end" fontSize="12" fill="#66717d">
+                  {v}
+                </text>
+              </g>
+            ))}
 
-            {/* one dot, one count and one date label per point */}
+            {/* soft area under the line, then the line itself */}
+            {area && <path d={area} fill="url(#areaFill)" />}
+            {points.length > 1 && <path d={curve} fill="none" stroke="#1d4ed8" strokeWidth="3" strokeLinecap="round" />}
+
+            {/* dots, with a tooltip on hover, and the date labels */}
             {points.map((p, i) => (
               <g key={p.date}>
-                <circle cx={x(i)} cy={y(p.count)} r="5" fill="#1d4ed8" />
-                <text x={x(i)} y={y(p.count) - 12} textAnchor="middle" fontSize="13" fontWeight="700" fill="#1f2933">
-                  {p.count}
-                </text>
-                <text x={x(i)} y={H - PAD + 20} textAnchor="middle" fontSize="12" fill="#52606d">
-                  {p.date.slice(5)}
-                </text>
+                <circle cx={x(i)} cy={y(p.count)} r="6" fill="#fff" stroke="#1d4ed8" strokeWidth="3">
+                  <title>{`${p.count} ${p.count === 1 ? "task" : "tasks"} due on ${shortDate(p.date)}`}</title>
+                </circle>
+                {i % labelEvery === 0 && (
+                  <text x={x(i)} y={base + 24} textAnchor="middle" fontSize="12" fill="#52606d">
+                    {shortDate(p.date)}
+                  </text>
+                )}
               </g>
             ))}
           </svg>
         )}
-        <div className="graph-note">Number of tasks due on each date (month-day)</div>
+        <div className="graph-note">Number of tasks due on each date. Hover a dot to see the details.</div>
       </div>
     </div>
   );
