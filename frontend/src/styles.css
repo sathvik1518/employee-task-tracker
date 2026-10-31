@@ -51,3 +51,11 @@ button.nav-item.active, button.nav-item.active:hover { background: #dbe5ff; colo
   .layout { flex-direction: column; }
   .sidenav { width: 100%; flex-direction: row; border-right: none; border-bottom: 1px solid #d9dde3; }
 }
+
+
+.chart { background: #fff; border: 1px solid #d9dde3; border-radius: 8px; padding: 16px 20px; display: grid; gap: 12px; }
+.bar-row { display: grid; grid-template-columns: 100px 1fr 32px; align-items: center; gap: 12px; }
+.bar-label { color: #52606d; font-size: 14px; }
+.bar-track { background: #eceff3; border-radius: 6px; height: 18px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 6px; transition: width 0.4s ease; }
+.bar-value { font-weight: 700; text-align: right; }
