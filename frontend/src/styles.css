@@ -59,3 +59,8 @@ button.nav-item.active, button.nav-item.active:hover { background: #dbe5ff; colo
 .bar-track { background: #eceff3; border-radius: 6px; height: 18px; overflow: hidden; }
 .bar-fill { height: 100%; border-radius: 6px; transition: width 0.4s ease; }
 .bar-value { font-weight: 700; text-align: right; }
+
+
+.graph { background: #fff; border: 1px solid #d9dde3; border-radius: 8px; padding: 16px 20px; }
+.graph svg { width: 100%; height: auto; display: block; }
+.graph-note { color: #66717d; font-size: 13px; margin-top: 6px; text-align: center; }
