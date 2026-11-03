@@ -78,7 +78,6 @@ export default function App() {
           ))}
         </nav>
 
-        <p className="rail-foot">React, FastAPI and PostgreSQL</p>
       </aside>
 
       <div className="main">
