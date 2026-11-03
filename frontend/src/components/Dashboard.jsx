@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getDashboard } from "../api.js";
 import { addDays, daysBetween, dueInfo, formatDate, formatLongDate, plural } from "../utils.js";
 import { Avatar, ErrorNotice, Icon, PriorityBadge, Skeleton } from "./ui.jsx";
@@ -221,6 +221,18 @@ function smoothPath(points) {
 
 function DueChart({ data }) {
   const [hover, setHover] = useState(null);
+  // The chart is drawn at the real width of its box, so it stays sharp and never gets too tall on wide screens.
+  const box = useRef(null);
+  const [W, setW] = useState(720);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return undefined;
+    const update = () => setW(Math.max(320, Math.round(el.clientWidth)));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const counts = Object.fromEntries(data.due_by_date.map((r) => [String(r.date).slice(0, 10), r.count]));
 
   // One point per day, so days with no tasks show as zero instead of disappearing.
@@ -237,8 +249,7 @@ function DueChart({ data }) {
     })
     .reduce((sum, r) => sum + r.count, 0);
 
-  const W = 720;
-  const H = 400;
+  const H = W < 520 ? 250 : 320;
   const L = 40;
   const R = 16;
   const T = 18;
@@ -255,8 +266,8 @@ function DueChart({ data }) {
   const active = hover === null ? null : days[hover];
 
   return (
-    <div className="chart">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Line chart of open tasks due each day">
+    <div className="chart" ref={box}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Line chart of open tasks due each day">
         <defs>
           <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--brand)" stopOpacity="0.28" />
