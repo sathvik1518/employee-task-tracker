@@ -34,7 +34,7 @@ def run(query, params=(), fetch="all"):
     """Run ONE SQL statement and return its rows (%s placeholders block SQL injection)."""
     conn = connect()
     try:
-        with conn:  
+        with conn:  # commit if it worked, roll back if it failed
             with conn.cursor() as cur:
                 cur.execute(query, params)
                 if fetch == "all":
@@ -42,6 +42,29 @@ def run(query, params=(), fetch="all"):
                 if fetch == "one":
                     return cur.fetchone()
                 return None
+    finally:
+        conn.close()
+
+
+def run_many(statements):
+    """Run several read queries on ONE connection (faster: connecting to a cloud database is slow).
+
+    statements: list of (query, params, fetch). Returns a list of results in the same order.
+    """
+    conn = connect()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                results = []
+                for query, params, fetch in statements:
+                    cur.execute(query, params)
+                    if fetch == "all":
+                        results.append(cur.fetchall())
+                    elif fetch == "one":
+                        results.append(cur.fetchone())
+                    else:
+                        results.append(None)
+                return results
     finally:
         conn.close()
 

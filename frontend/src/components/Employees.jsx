@@ -1,102 +1,181 @@
-import { useEffect, useState } from "react";
-import { addEmployee, deleteEmployee, getEmployees } from "../api.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { deleteEmployee, getEmployees } from "../api.js";
+import { plural } from "../utils.js";
+import EmployeeForm from "./EmployeeForm.jsx";
+import { useToast } from "./Toast.jsx";
+import { Avatar, ConfirmDialog, EmptyState, ErrorNotice, Icon, Skeleton } from "./ui.jsx";
 
-const EMPTY = { name: "", email: "", department: "" };
-
-export default function Employees() {
-  const [employees, setEmployees] = useState([]);
-  const [form, setForm] = useState(EMPTY);
-  const [search, setSearch] = useState(""); 
+export default function Employees({ go }) {
+  const toast = useToast();
+  const [employees, setEmployees] = useState(null); // null = still loading
+  const [allDepartments, setAllDepartments] = useState([]);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [department, setDepartment] = useState("");
+  const [editing, setEditing] = useState(null); // null | "new" | employee
+  const [removing, setRemoving] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const requestNo = useRef(0);
 
-  async function load() {
+  // Search and department filter run in the database (see GET /employees).
+  const load = useCallback(async () => {
+    const mine = ++requestNo.current;
     try {
-      setEmployees(await getEmployees());
-    } catch (e) {
-      setError(e.message);
+      const rows = await getEmployees({ search, department });
+      if (mine !== requestNo.current) return; // an older request finished late: ignore it
+      setEmployees(rows);
+      setError("");
+      if (!search && !department) setAllDepartments([...new Set(rows.map((r) => r.department))].sort());
+    } catch (err) {
+      if (mine === requestNo.current) setError(err.message);
     }
-  }
+  }, [search, department]);
 
   useEffect(() => {
-    load();
+    const timer = setTimeout(load, search ? 250 : 0); // wait for the person to stop typing
+    return () => clearTimeout(timer);
+  }, [load, search]);
+
+  // The department list must not shrink while filtering, so load it once without filters.
+  useEffect(() => {
+    getEmployees().then((rows) => setAllDepartments([...new Set(rows.map((r) => r.department))].sort())).catch(() => {});
   }, []);
 
-  function handleChange(event) {
-    setForm({ ...form, [event.target.name]: event.target.value });
-  }
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setError("");
+  async function confirmDelete() {
+    setBusy(true);
     try {
-      await addEmployee(form); 
-      setForm(EMPTY);
+      await deleteEmployee(removing.id);
+      toast(`${removing.name} deleted${removing.task_count ? ` along with ${plural(removing.task_count, "task")}` : ""}`);
+      setRemoving(null);
       load();
-    } catch (e) {
-      setError(e.message);
+    } catch (err) {
+      toast(err.message, { tone: "error" });
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function handleDelete(employee) {
-    const warning = employee.task_count > 0 ? ` Their ${employee.task_count} task(s) will be deleted too.` : "";
-    if (!window.confirm(`Delete ${employee.name}?${warning}`)) return;
-    setError("");
-    try {
-      await deleteEmployee(employee.id); 
-      load();
-    } catch (e) {
-      setError(e.message);
-    }
-  }
-
-  const visible = employees.filter((e) => e.name.toLowerCase().includes(search.toLowerCase()));
+  const filtering = Boolean(search || department);
 
   return (
-    <div>
-      <h2>Add employee</h2>
-      <form className="form" onSubmit={handleSubmit}>
-        <input name="name" placeholder="Name" value={form.name} onChange={handleChange} required />
-        <input name="email" type="email" placeholder="Email" value={form.email} onChange={handleChange} required />
-        <input name="department" placeholder="Department" value={form.department} onChange={handleChange} required />
-        <button type="submit">Add employee</button>
-      </form>
-      {error && <p className="error">{error}</p>}
-
-      <h2>Employees ({visible.length})</h2>
+    <section>
       <div className="toolbar">
-        <input placeholder="Search by employee name" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="search">
+          <Icon name="search" size={18} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name or email" aria-label="Search employees" />
+        </div>
+        <select value={department} onChange={(e) => setDepartment(e.target.value)} aria-label="Filter by department">
+          <option value="">All departments</option>
+          {allDepartments.map((d) => (
+            <option key={d}>{d}</option>
+          ))}
+        </select>
+        <span className="toolbar-spacer" />
+        <button className="btn btn-primary" onClick={() => setEditing("new")}>
+          <Icon name="plus" size={18} /> Add employee
+        </button>
       </div>
 
-      {visible.length === 0 ? (
-        <p className="muted">{employees.length === 0 ? "No employees yet. Add one above." : "No employee matches that name."}</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Department</th>
-              <th>Tasks</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((e) => (
-              <tr key={e.id}>
-                <td>{e.name}</td>
-                <td>{e.email}</td>
-                <td>{e.department}</td>
-                <td>{e.task_count}</td>
-                <td>
-                  <button className="danger" onClick={() => handleDelete(e)}>
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {error && <ErrorNotice message={error} onRetry={load} />}
+
+      {employees === null && !error && (
+        <div className="people-grid">
+          <Skeleton height={190} count={6} />
+        </div>
       )}
-    </div>
+
+      {employees && employees.length === 0 && (
+        <EmptyState
+          title={filtering ? "No one matches those filters" : "No employees yet"}
+          text={filtering ? "Try a different name or clear the department filter." : "Add your first employee, then give them tasks."}
+          action={
+            !filtering && (
+              <button className="btn btn-primary" onClick={() => setEditing("new")}>
+                <Icon name="plus" size={18} /> Add employee
+              </button>
+            )
+          }
+        />
+      )}
+
+      {employees && employees.length > 0 && (
+        <>
+          <p className="result-count">{plural(employees.length, "employee")}</p>
+          <div className="people-grid">
+            {employees.map((e) => (
+              <article key={e.id} className="person">
+                <header>
+                  <Avatar id={e.id} name={e.name} size={46} />
+                  <div className="person-id">
+                    <h3>{e.name}</h3>
+                    <span className="chip">{e.department}</span>
+                  </div>
+                  <div className="row-actions">
+                    <button className="icon-btn" aria-label={`Edit ${e.name}`} onClick={() => setEditing(e)}>
+                      <Icon name="edit" size={18} />
+                    </button>
+                    <button className="icon-btn icon-btn-danger" aria-label={`Delete ${e.name}`} onClick={() => setRemoving(e)}>
+                      <Icon name="trash" size={18} />
+                    </button>
+                  </div>
+                </header>
+
+                <a className="person-mail" href={`mailto:${e.email}`}>
+                  <Icon name="mail" size={16} /> {e.email}
+                </a>
+
+                <dl className="person-stats">
+                  <div>
+                    <dt>Open</dt>
+                    <dd>{e.open_tasks}</dd>
+                  </div>
+                  <div>
+                    <dt>Done</dt>
+                    <dd>{e.completed_tasks}</dd>
+                  </div>
+                  <div className={e.overdue_tasks ? "late" : ""}>
+                    <dt>Overdue</dt>
+                    <dd>{e.overdue_tasks}</dd>
+                  </div>
+                </dl>
+
+                <button className="btn btn-ghost" onClick={() => go("tasks", { employeeId: String(e.id) })}>
+                  View {e.task_count ? plural(e.task_count, "task") : "tasks"}
+                </button>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+
+      {editing && (
+        <EmployeeForm
+          employee={editing === "new" ? null : editing}
+          departments={allDepartments}
+          onClose={() => setEditing(null)}
+          onSaved={(saved, wasEdit) => {
+            toast(wasEdit ? `${saved.name} updated` : `${saved.name} added`);
+            setEditing(null);
+            load();
+            getEmployees().then((rows) => setAllDepartments([...new Set(rows.map((r) => r.department))].sort())).catch(() => {});
+          }}
+        />
+      )}
+
+      {removing && (
+        <ConfirmDialog title={`Delete ${removing.name}?`} busy={busy} onConfirm={confirmDelete} onClose={() => setRemoving(null)}>
+          <p>
+            This removes {removing.name} from the team
+            {removing.task_count > 0 && (
+              <>
+                {" "}
+                and permanently deletes their <strong>{plural(removing.task_count, "task")}</strong>
+              </>
+            )}
+            . You can't undo this.
+          </p>
+        </ConfirmDialog>
+      )}
+    </section>
   );
 }
