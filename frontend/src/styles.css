@@ -233,7 +233,7 @@ svg text {
   justify-content: space-between;
   gap: 16px;
   padding: 26px 32px 6px;
-  max-width: 1240px;
+  max-width: 1800px;
 }
 .topbar h1 {
   font-size: 28px;
@@ -245,7 +245,7 @@ svg text {
 }
 .content {
   padding: 18px 32px 56px;
-  max-width: 1240px;
+  max-width: 1800px;
 }
 
 /* ---------- buttons ---------- */
